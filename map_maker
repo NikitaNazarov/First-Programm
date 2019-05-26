@@ -1,0 +1,264 @@
+import pygame
+import random
+import sys
+import os
+import math
+import time
+
+class Camera():
+    def __init__(self, x, y, minx, miny, spd):
+        self.x = x
+        self.y = y
+        self.minx = minx
+        self.miny = miny
+        self.spd = spd
+        self.spdx = 0
+        self.spdy = 0
+    
+    def move(self):
+        if self.x + self.spdx >= self.minx:
+            self.x += self.spdx
+        if self.y + self.spdy >= self.miny:
+            self.y += self.spdy
+            
+class Text():
+    def __init__(self, x, y, text, time):
+        self.x = x
+        self.y = y
+        font = pygame.font.SysFont('arial', 50)
+        self.text = text
+        self.text = font.render(text, 1, (0, 0, 0))
+        self.time = time
+        self.move_to = [x, y]
+    
+    def render(self):
+        self.x += (self.move_to[0] - self.x) / 30
+        self.y += (self.move_to[1] - self.y) / 30
+        if self.time > 0:
+            self.time -= 1
+        else:
+            self.move_to[1] = 0
+        screen.blit(self.text, [self.x, self.y])
+            
+def load(name, size):
+    fullname = os.path.join('data', name)   
+    picture = pygame.image.load(fullname).convert_alpha()
+    rect = picture.get_rect()
+    sx = rect.width
+    sy = rect.height
+    return pygame.transform.scale(picture, (sx * size, sy * size))   
+
+def search(name):
+    if 'T' in name:
+        return choice[2][0]
+    else:
+        for i in choice:
+            if i[1] == name:
+                return i[0]
+
+pygame.init()
+
+window = [1000, 600]
+screen = pygame.display.set_mode(window)
+
+set_teleport = None
+
+# loading preview images
+size_const = 4 # constant of pixel size
+fps_const = 6 # constant of move speed
+ID010201 = load('ID010201.png', size_const) # block
+ID150101 = load('ID150101.png', size_const) # door
+ID010301 = load('ID010301.png', size_const) # upblock
+ID020101 = load('ID020101.png', size_const) # plant
+ID020201 = load('ID020201.png', size_const) # water
+ID020301 = load('ID020301.png', size_const) # tropicaltree
+ID110101 = load('ID110101.png', size_const) # hanger
+ID140101 = load('ID140101.png', size_const) # saw
+ID150101 = load('ID150101.png', size_const) # door
+ID100101 = load('ID100101.png', size_const) # stand
+ID060101 = load('ID060101.png', size_const) # stair
+ID030101 = load('ID030101.png', size_const) # enemyball
+ID010401 = load('ID010401.png', size_const) # block
+ID020401 = load('ID020401.png', size_const) # texturePLANT
+ID210101 = load('ID210101.png', size_const) # playButtton
+ID210102 = load('ID210102.png', size_const) # playButtton
+ID220101 = load('ID220101.png', size_const) # flag
+ID240101 = load('ID240101.png', size_const) # save_button
+ID230201 = load('ID230201.png', size_const) # shadow
+ID250101 = load('ID250101.png', size_const) # mline
+ID190101 = load('ID190101.png', size_const) # bomb
+ID010501 = load('ID010501.png', size_const) # ground
+ID160101 = load('ID160101.png', size_const) # spikes
+
+# choice - img - ctype, which appends to the lvlmap
+choice = [[ID010201, 'B'],
+          [ID010301, 'U'],
+          [ID150101, 'T'],
+          [ID020201, 'W'],
+          [ID060101, 'S'],
+          [ID030101, 'N'],
+          [ID010401, 'D'],
+          [ID220101, 'F'],
+          [ID100101, 'P'],
+          [ID110101, 'H'],
+          [ID250101, 'K'],
+          [ID190101, 'SB'],
+          [ID010501, 'G'],
+          [ID160101, 'A']]
+choosen = 0
+
+# map 60 x 60
+s = input('do you want to load a map?(number or nothing): ')
+if s == '':
+    s = 0
+number = None
+try:
+    with open('levels.txt', 'rt') as file:
+        old = file.read()
+                
+    mas = old.split() 
+    # cut each map
+    maps = []
+    for m in range(len(mas) // 3600):
+        maps.append([])
+        for y in range(60):
+            maps[-1].append([])
+            for x in range(60):
+                if mas[m * 3600 + y * 60 + x] == '0':
+                    maps[-1][-1].append(0)
+                else:
+                    maps[-1][-1].append(mas[m * 3600 + y * 60 + x])
+    
+                
+    lvlmap = maps[int(s)]
+    number = int(s)
+except Exception:
+    lvlmap = []
+    for y in range(60):
+        lvlmap.append([])
+        for x in range(60):
+            lvlmap[-1].append(0)
+
+# make objects
+camera = Camera(0, 0, 0, 0, 1)
+text = Text(0, 0, 'UNSAVED', 200)
+place = text.text.get_rect(center=(window[0] / 2, window[1] / 2))
+text.y = 0
+text.move_to = [place.x, 0]
+sizec = size_const * 16
+
+while True:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+                pygame.quit()
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LEFT:
+                camera.spdx -= camera.spd
+            elif event.key == pygame.K_RIGHT:
+                camera.spdx += camera.spd
+            elif event.key == pygame.K_DOWN:
+                camera.spdy += camera.spd
+            elif event.key == pygame.K_UP:
+                camera.spdy -= camera.spd  
+                
+            elif event.key == pygame.K_n:
+                choosen = (choosen + 1) % len(choice)
+                
+            elif event.key == pygame.K_s: # save lvl
+                with open('levels.txt', 'rt') as file:
+                    old = file.read()
+                            
+                mas = old.split() 
+                # cut each map
+                maps = []
+                for m in range(len(mas) // 3600):
+                    maps.append([])
+                    for y in range(60):
+                        maps[-1].append([])
+                        for x in range(60):
+                            maps[-1][-1].append(mas[m * 3600 + y * 60 + x])
+                
+                if number is not None:
+                    maps[number] = lvlmap
+                else:
+                    maps.append(lvlmap)
+                    
+                st = ''
+                for m in range(len(maps)):
+                    lvl = maps[m]
+                    for y in range(len(lvl)):
+                        for x in range(len(lvl[y])):
+                            st += str(lvl[y][x]) + ' '
+                        st += '\n'
+                    st += '\n'
+                            
+                with open('levels.txt', 'wt') as file:
+                    file.write(st)
+                
+                text = Text(0, 0, 'SAVED', 200)
+                place = text.text.get_rect(center=(window[0] / 2, window[1] / 2))
+                text.x = place.x
+                text.move_to = [place.x, place.y]
+                
+        elif event.type == pygame.KEYUP:
+            if event.key in [pygame.K_LEFT, pygame.K_RIGHT]:
+                camera.spdx = 0
+            elif event.key in [pygame.K_UP, pygame.K_DOWN]:
+                camera.spdy = 0  
+                
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if pygame.mouse.get_pressed()[0] == 1:
+                x, y = (pygame.mouse.get_pos()[0] + camera.x) // sizec, (pygame.mouse.get_pos()[1] + camera.y) // sizec
+                if set_teleport is not None:
+                    lvlmap[set_teleport[1]][set_teleport[0]] = 'T' + '|' + str(x) + '|' + str(y)
+                    set_teleport = None
+                else:
+                    try:
+                        lvlmap[y][x] = choice[choosen][1]
+                        if choice[choosen][1] == 'T':
+                            set_teleport = [x, y]
+                        if text.ttext != 'UNSAVED':
+                            text = Text(0, 0, 'UNSAVED', 200)
+                            place = text.text.get_rect(center=(window[0] / 2, window[1] / 2))
+                            text.x = place.x
+                            text.move_to = [place.x, place.y]
+                    except Exception:
+                        pass
+            if pygame.mouse.get_pressed()[2] == 1:
+                # delete obj on mouse coords
+                x, y = (pygame.mouse.get_pos()[0] + camera.x) // sizec, (pygame.mouse.get_pos()[1] + camera.y) // sizec
+                try:
+                    lvlmap[y][x] = 0
+                except Exception:
+                    pass             
+                
+            
+    screen.fill((255, 255, 255))
+    
+    camera.move() # moving camera
+                
+    # rendering
+    for y in range(60):
+        pygame.draw.line(screen, (0, 0, 0), [0, y * sizec - camera.y], [window[0], y * sizec - camera.y], 1)
+    for x in range(60):
+        pygame.draw.line(screen, (0, 0, 0), [x * sizec - camera.x, 0], [x * sizec - camera.x, window[1]], 1)    
+    
+    for y in range(len(lvlmap)):
+        for x in range(len(lvlmap[y])):
+            if lvlmap[y][x] != 0:
+                screen.blit(search(lvlmap[y][x]), [x * sizec - camera.x, y * sizec - camera.y])
+                
+    x, y = ((pygame.mouse.get_pos()[0] + camera.x) // sizec) * sizec - camera.x, ((pygame.mouse.get_pos()[1] + camera.y) // sizec) * sizec - camera.y
+    screen.blit(choice[choosen][0], [x, y])
+    
+    pygame.draw.rect(screen, (0, 0, 0), [x, y, sizec, sizec], 4)
+    
+    for x in range(window[0] // sizec + 1):
+        screen.blit(ID230201, [x * sizec, 0])
+    screen.blit(ID240101, [5, 5])
+    
+    text.render()
+    
+    pygame.display.flip()
+        
+sys.exit()
