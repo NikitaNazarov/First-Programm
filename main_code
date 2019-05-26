@@ -1,0 +1,996 @@
+import pygame
+import random
+import sys
+import os
+import math
+import time
+
+pygame.init()
+
+bl = ['B', 'D', 'K', 'G']
+
+window = [1000, 600]
+screen = pygame.display.set_mode(window)
+
+class CheckTrigger():
+    def check_trigger(self, x, y, w, h):
+        if self.x - w <= x <= self.x + self.w and self.y - h <= y <= self.y + self.h:
+            return True
+        return False 
+    
+class Collider():
+    def __init__(self, x, y, w, h, ctype, keys):
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.ctype = ctype
+        self.keys = keys 
+        
+    def check_trigger(self, x, y, w, h):
+        # checking pressed keys
+        keys = True
+        if self.keys is not None:
+            pressed = pygame.key.get_pressed()
+            for act in self.keys:
+                if bool(pressed[act]) is False:
+                    keys = False
+                    break
+        
+        # collidering formula        
+        if self.x - w <= x <= self.x + self.w and self.y - h <= y <= self.y + self.h and keys is True:
+            return True
+        return False         
+    
+class Player():
+    def __init__(self, x, y, w, h, animations, controls, physics):
+        # player pos/size
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        # player animations
+        self.animations = animations
+        self.anim_num = 0
+        self.time = 0
+        self.nimg = 0
+        self.flipped = False
+        # player image
+        self.image = self.animations[self.anim_num][0]
+        # player controls
+        self.controls = controls
+        # player physics
+        self.physics = physics
+        self.spdy = 0
+        self.spdx = 0
+        self.pos = 'fall'
+        self.stopping = True
+        self.dead = False        
+        self.health = 2
+        self.past_pos = [0, 0]
+        
+    def move(self):
+        if player.physics is True:
+            if player.pos == 'fall':
+                self.spdy += fps_const * 0.0007
+            if player.stopping is True:
+                self.spdx += math.copysign(min([0.005, abs(self.spdx)]), -self.spdx)
+        self.y += self.spdy
+        self.x += self.spdx
+        
+    def change_animation(self): # checking for new image(if time passed)
+        self.time += 1
+        if self.time >= self.animations[self.anim_num][-1]:
+            self.nimg = (self.nimg + 1) % (len(self.animations[self.anim_num]) - 1)
+            if self.flipped is True:
+                self.image = pygame.transform.flip(self.animations[self.anim_num][self.nimg], -1, 0)
+            else:
+                self.image = self.animations[self.anim_num][self.nimg]
+            self.time = 0 
+
+    def render(self, dx, dy): # rendering image with camera deltas
+        if self.dead is True:
+            self.image = self.animations[3][0]        
+        screen.blit(self.image, [self.x + dx, self.y + dy])
+        
+class Piece():
+    def __init__(self, x, y, spdx, spdy, image):
+        self.x = x
+        self.y = y
+        self.spdx = spdx
+        self.spdy = spdy
+        self.image = image
+        self.destroyed = False
+        
+    def move(self):
+        self.x += self.spdx
+        self.y += self.spdy
+        self.spdy += 0.01
+    
+    def render(self, dx, dy):
+        screen.blit(self.image, [self.x + dx, self.y + dy]) 
+        if self.y + dy > window[1] or self.y + dy < 0 or self.x + dx > window[0] or self.x + dx < 0:
+            self.destroyed = True        
+        
+class Animated_Image(): # class changes images every wait_time 
+    def __init__(self, x, y, images, wait_time):
+        self.x = x
+        self.y = y
+        self.images = images
+        self.image = images[0]
+        self.wait_time = wait_time
+        self.time = 0
+        self.anim = 0
+        
+    def change_animation(self):
+        if self.time >= self.wait_time:
+            self.time = 0
+            self.anim = (self.anim + 1) % len(self.images)
+            self.image = self.images[self.anim]
+        else:
+            self.time += 1
+            
+    def render(self, dx, dy):
+        screen.blit(self.image, [self.x + dx, self.y + dy])
+        
+class Image(): # just draw an image
+    def __init__(self, x, y, image):
+        self.x = x
+        self.y = y
+        self.image = image
+    
+    def render(self, dx, dy):
+        screen.blit(self.image, [self.x + dx, self.y + dy])
+
+class Camera():
+    def __init__(self, x, y, center, spdcf, movecf):
+        self.x = x
+        self.y = y
+        self.center = center
+        self.spdcf = spdcf
+        self.movecf = movecf
+        
+class Bomb():
+    def __init__(self, x, y, w, h, image, time):
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.spdy = 0
+        self.spdx = 0
+        self.image = image
+        self.time = time
+        self.destroyed = False
+    
+    def move(self):
+        self.y += self.spdy
+        self.x += self.spdx
+        self.spdy += 0.005
+        
+        size = 16 * size_const
+        near = [check_near(lvlmap, int(self.x // size), int(self.y // size))[3],
+               check_near(lvlmap, int((self.x + self.w) // size), int(self.y // size))[3]]
+        if 'B' in near or 'D' in near or 'K' in near or 'G' in near:
+            self.y = (self.y // size) * size
+            self.spdy = 0
+            if 'K' in near:
+                self.spdx = -0.5
+            else:
+                self.spdx = 0
+
+        
+        if self.time == 0:
+            boom(self.x + self.w / 2, self.y + self.h / 2)
+            self.destroyed = True
+        else:
+            self.time -= 1
+    
+    def render(self, dx, dy):
+        screen.blit(self.image, [self.x + dx, self.y + dy + size_const * 2])  
+        
+class EnemyMask():
+    def __init__(self, x, y, w, h, images):
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.images = images
+        self.image = self.images[0]
+    
+    def move(self):
+        pass
+    
+    def render(self, dx, dy):
+        screen.blit(self.image, [self.x + dx, self.y + dy])
+        
+class EnemyBlock():
+    def __init__(self, x, y, w, h, images):
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.spdy = 0
+        self.images = images
+        self.image = images[0]
+        
+    def move(self):
+        size = 16 * size_const
+        self.y += self.spdy
+        if int(self.x) % size == 0 and int(self.y) % size == 0:
+            near = check_near(lvlmap, int(self.x // size), int(self.y // size))
+            if near[3] in ['B', 'D', 'K']:
+                self.spdx = 0
+        
+    def render(self, dx, dy):
+        screen.blit(self.image, [self.x + dx, self.y + dy])
+        
+class Spawner():
+    def __init__(self, x, y, spawnobject, time):
+        self.x = x
+        self.y = y
+        self.spawn = spawnobject
+        self.time = 0
+        self.mtime = time
+    
+    def tick(self):
+        global bombs
+        if self.time == 0:
+            self.time = self.mtime
+            if self.spawn == 'bomb':
+                bombs.append(Bomb(self.x, self.y, size_const * 16, size_const * 16, ID190101, 1000))
+        else:
+            self.time -= 1
+        
+class EnemyBall(CheckTrigger):
+    def __init__(self, x, y, w, h, images):
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.direction = 0
+        self.predir = 0
+        self.images = images
+        self.image = self.images[0]
+        self.time = 0
+        self.wtime = 50
+        self.anim = 0
+        self.move_to = [x, y]
+    
+    def change_animation(self):
+        if self.time >= self.wtime:
+            self.time = 0
+            self.anim = (self.anim + 1) % len(self.images)
+            self.image = self.images[self.anim]
+        else:
+            self.time += 1
+            
+    def move(self):
+        size = 16 * size_const
+        ok = True
+        if int(self.x) % size == 0 and int(self.y) % size == 0:
+            near = check_near(lvlmap, int(self.x // size), int(self.y // size))
+            if near[0] in ['B', 'D', 'K', 'G']:
+                self.predir = 2
+            if near[1] in ['B', 'D', 'K', 'G']:
+                self.predir = 0
+            if near[2] in ['B', 'D', 'K', 'G']:
+                self.predir = 3
+            if near[3] in ['B', 'D', 'K', 'G']:
+                self.predir = 1                          
+                            
+            ok = False
+            dir0 = self.direction
+            dir1 = (self.direction + 1) % 4
+            dir2 = (self.direction - 1) % 4
+            for d in [dir0, dir1, dir2]:
+                if 'B' in near or 'D' in near or 'K' in near or 'G' in near:
+                    # check collidering
+                    if d == 0:
+                        if near[1] not in ['B', 'D', 'K', 'G']:
+                            self.direction = d
+                            ok = True
+                            break
+                    elif d == 1:
+                        if near[3] not in ['B', 'D', 'K', 'G']:
+                            self.direction = d
+                            ok = True
+                            break
+                    elif d == 2:
+                        if near[0] not in ['B', 'D', 'K', 'G']:
+                            self.direction = d
+                            ok = True
+                            break
+                    elif d == 3:
+                        if near[2] not in ['B', 'D', 'K', 'G']:
+                            self.direction = d
+                            ok = True
+                            break    
+                else:
+                    self.direction = self.predir
+                    ok = True
+                    break        
+            if ok is False:
+                self.direction = (self.direction - 1) % 4
+        if ok is True:
+            if self.direction == 0:
+                self.x += 1
+            elif self.direction == 1:
+                self.y += 1
+            elif self.direction == 2:
+                self.x -= 1
+            elif self.direction == 3:
+                self.y -= 1            
+            
+    def render(self, dx, dy):
+        screen.blit(self.image, [self.x + dx, self.y + dy])
+        
+def load_map(lvl):
+    print(lvl)
+    with open('levels.txt', 'rt') as file:
+        mas = file.read()
+       
+    mas = mas.split() 
+    # cut each map
+    maps = []
+    for m in range(len(mas) // 3600):
+        maps.append([])
+        for y in range(60):
+            maps[-1].append([])
+            for x in range(60):
+                maps[-1][-1].append(mas[m * 3600 + y * 60 + x])
+    return maps[lvl]    
+    
+def render_number(num, x, y):
+    img = [ID070101,ID070102,ID070103,ID070104,ID070105,ID070106,ID070107,ID070108,ID070109,ID070110]
+    x = x
+    y = y
+    for n in str(num):
+        try:
+            screen.blit(img[int(n)], [x, y])
+        except Exception:
+            pass
+        x += 8 * size_const
+        
+def make_map(lvlmap, deltax, deltay, cell_size, textures_pack):
+    # textures_pack - [block]
+    # map: 0 - None/B - block/T num num - teleport/A num - animation
+    for y in range(len(lvlmap)):
+        for x in range(len(lvlmap[y])):
+            cell = lvlmap[y][x]
+            size = cell_size # only for shorter code
+            print(cell, end=' ')
+            if cell == 'B': # block
+                n = check_near(lvlmap, x, y)
+                # choose image
+                if n[0] in bl and n[1] in bl and n[2] in bl and n[3] in bl:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][0]))
+                elif n[0] in bl and n[1] in bl and n[2] != 'B' and n[3] in bl:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][1]))
+                elif n[0] != 'B' and n[1] in bl and n[2] in bl and n[3] in bl:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][2]))
+                elif n[0] in bl and n[1] != 'B' and n[2] in bl and n[3] in bl:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][3]))
+                elif n[0] != 'B' and n[1] in bl and n[2] != 'B' and n[3] in bl:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][4]))
+                elif n[0] in bl and n[1] != 'B' and n[2] != 'B' and n[3] in bl:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][5]))
+                elif n[0] != 'B' and n[1] in bl and n[2] in bl and n[3] != 'B':
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][6]))  
+                elif n[0] in bl and n[1] != 'B' and n[2] in bl and n[3] != 'B':
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][7]))  
+                elif n[0] in bl and n[1] in bl and n[2] in bl and n[3] != 'B':
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][8]))
+                elif n[0] != 'B' and n[1] != 'B' and n[2] != 'B' and n[3] in bl:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][9])) 
+                elif n[0] != 'B' and n[1] != 'B' and n[2] in bl and n[3] in bl:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][10]))
+                elif n[0] != 'B' and n[1] != 'B' and n[2] != 'B' and n[3] in bl:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[0][11]))                
+                # make new collider
+                colliders.append(Collider(deltax + cell_size * x, deltay + cell_size * y, cell_size, cell_size, 'block', None))
+            elif cell == 'H': # hanger
+                images.append(Image(deltax + x * size, deltay + y * size, textures_pack[1][0]))
+                colliders.append(Collider(deltax + cell_size * x + 6 * size_const, deltay + cell_size * y, cell_size - 12 * size_const, cell_size, 'hanger', [119]))
+            elif cell == 'S': # stair
+                images.append(Image(deltax + x * size, deltay + y * size, textures_pack[2][0]))
+                colliders.append(Collider(deltax + cell_size * x, deltay + cell_size * y, cell_size, cell_size, 'stair', [119]))
+            elif cell == 'N':
+                enemyes.append(EnemyBall(deltax + cell_size * x, deltay + cell_size * y, cell_size, cell_size, textures_pack[3]))
+            elif cell == 'D':
+                n = check_near(lvlmap, x, y)
+                # choose image
+                if n[2] == 'D':
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[4][0]))
+                else:
+                    images.append(Image(deltax + x * size, deltay + y * size, textures_pack[4][1]))                
+                colliders.append(Collider(deltax + cell_size * x, deltay + cell_size * y, cell_size, cell_size, 'block', None))      
+            elif cell == 'W':
+                animations.append(Animated_Image(deltax + x * size, deltay + y * size, textures_pack[5], 30))  
+            elif cell == 'F':
+                colliders.append(Collider(deltax + cell_size * x, deltay + cell_size * y, cell_size, cell_size, 'flag', [32])) 
+                animations.append(Animated_Image(deltax + x * size, deltay + y * size, textures_pack[6], 30))  
+            elif cell == 'P':
+                player.x = deltax + cell_size * x
+                player.y = deltay + cell_size * y
+                player.past_pos = [player.x, player.y]
+            elif 'T' in str(cell):
+                s = cell.split('|')
+                images.append(Image(deltax + x * size, deltay + y * size, textures_pack[8][0]))  
+                colliders.append(Collider(deltax + cell_size * x, deltay + cell_size * y, cell_size, cell_size * 2, 'teleport' + ' ' + s[1] + ' ' + s[2], [32]))
+            elif cell == 'K':
+                n = check_near(lvlmap, x, y)
+                if n[0] != 'K':
+                    animations.append(Animated_Image(deltax + x * size, deltay + y * size, textures_pack[9][1], 30)) 
+                elif n[1] != 'K':
+                    animations.append(Animated_Image(deltax + x * size, deltay + y * size, textures_pack[9][2], 30))
+                else:
+                    animations.append(Animated_Image(deltax + x * size, deltay + y * size, textures_pack[9][0], 30)) 
+                colliders.append(Collider(deltax + cell_size * x, deltay + cell_size * y, cell_size, cell_size, 'konv', None))           
+            elif cell == 'SB':
+                spawners.append(Spawner(deltax + x * size, deltay + y * size, 'bomb', 500))
+            elif cell == 'G':
+                images.append(Image(deltax + x * size, deltay + y * size, textures_pack[11][0]))  
+                colliders.append(Collider(deltax + cell_size * x, deltay + cell_size * y, cell_size, cell_size * 6, 'block', None)) 
+            elif cell == 'A':
+                images.append(Image(deltax + x * size, deltay + y * size, textures_pack[12][0]))  
+                colliders.append(Collider(deltax + cell_size * x, deltay + cell_size * y + cell_size / 2, cell_size, cell_size / 2, 'deathtouch', None))                 
+            # add shadow
+            '''if y > 0:
+                if lvlmap[y - 1][x] in ['B', 'D'] and cell not in ['B', 'D']:
+                    shadows.append(Image(deltax + x * size, deltay + y * size, textures_pack[7][0]))'''
+            
+        print()
+        
+def boom(x, y):
+    global shacking_time, pieces
+    shacking_time = 100
+    for i in range(40):
+        pieces.append(Piece(x, y, random.randint(-30, 30) / 100, random.randint(-200, -100) / 100, ID180101))
+            
+def check_near(field, x, y): # returned nearest cells(left/right/up/down)
+    near = []
+    if x > 0:
+        near.append(field[y][x - 1])
+    else:
+        near.append(0)
+    if x < len(field[0]) - 1:
+        near.append(field[y][x + 1])
+    else:
+        near.append(0)  
+    if y > 0:
+        near.append(field[y - 1][x])
+    else:
+        near.append(0)
+    if y < len(field) - 1:
+        near.append(field[y + 1][x])
+    else:
+        near.append(0)      
+    return near
+
+def collidering(x, y, w, h):
+    global player, old_py
+    if player.spdy > 0:
+        if player.spdx == 0:
+            if x - player.w < player.x < x + w:
+               # toching upside of block
+                player.y = y - player.h
+                player.spdy = 0
+                player.pos = 'stand'
+        elif player.spdx > 0:
+            deltax = player.spdx * (player.y + player.h - y) / player.spdy
+            px = player.x - deltax
+            if x - player.w < px < x + w: 
+                # toching upside of block
+                player.y = y - player.h
+                player.spdy = 0
+                player.pos = 'stand'
+            else:
+                # toching leftside of block
+                player.x = x - player.w
+        elif player.spdx < 0:
+            deltax = player.spdx * (player.y + player.h - y) / player.spdy
+            px = player.x - deltax
+            if x - player.w < px < x + w: 
+                # toching upside of block
+                player.y = y - player.h
+                player.spdy = 0
+                player.pos = 'stand'
+            else:
+                # toching leftside of block
+                player.x = x + w 
+                
+    elif player.spdy < 0:
+        if player.spdx == 0:
+            if x - player.w < player.x < x + w:
+               # toching downside of block
+                player.y = y + h
+                player.spdy = 0
+        elif player.spdx > 0:
+            deltax = player.spdx * (player.y - y - h) / player.spdy
+            px = player.x - deltax
+            if x - player.w < px < x + w:
+                # toching downside of block
+                player.y = y + h
+                player.spdy = 0
+            else:
+                # toching leftside of block
+                player.x = x - player.w
+        elif player.spdx < 0:
+            deltax = player.spdx * (player.y - y - h) / player.spdy
+            px = player.x - deltax
+            if x - player.w < px < x + w: 
+                # toching downside of block
+                player.y = y + h
+                player.spdy = 0
+            else:
+                # toching leftside of block
+                player.x = x + w 
+    elif player.spdy == 0:
+        if old_py + player.h > y:
+            if player.spdx > 0:
+                player.x = x - player.w
+            elif player.spdx < 0:
+                player.x = x + w   
+    
+def load(name, size):
+    fullname = os.path.join('data', name)   
+    picture = pygame.image.load(fullname).convert_alpha()
+    rect = picture.get_rect()
+    sx = rect.width
+    sy = rect.height
+    return pygame.transform.scale(picture, (sx * size, sy * size))
+
+def clear_map():
+    global images, colliders, animations, enemyes, shadows, bombs, spawners, pieces
+    images = []
+    colliders = []
+    animations = []
+    enemyes = []
+    shadows = []
+    bombs = []
+    spawners = []
+    pieces = []
+
+# import images
+size_const = 5 # constant of pixel size
+fps_const = 6 # constant of move speed
+ID010101 = load('ID1-01-01.png', size_const)
+ID090101 = load('ID090101.png', size_const)
+ID090102 = load('ID090102.png', size_const)
+ID090103 = load('ID090103.png', size_const)
+ID010201 = load('ID010201.png', size_const) # block
+ID010202 = load('ID010202.png', size_const) # block
+ID010203 = load('ID010203.png', size_const) # block
+ID010204 = load('ID010204.png', size_const) # block
+ID010205 = load('ID010205.png', size_const) # block
+ID010206 = load('ID010206.png', size_const) # block
+ID010207 = load('ID010207.png', size_const) # block
+ID010208 = load('ID010208.png', size_const) # block
+ID010209 = load('ID010209.png', size_const) # block
+ID010210 = load('ID010210.png', size_const) # block
+ID010211 = load('ID010211.png', size_const) # block
+ID010212 = load('ID010212.png', size_const) # block
+ID010301 = load('ID010301.png', size_const) # upblock
+ID010302 = load('ID010302.png', size_const) # upblock
+ID010303 = load('ID010303.png', size_const) # upblock
+ID020101 = load('ID020101.png', size_const) # plant
+ID020102 = load('ID020102.png', size_const) # plant
+ID020103 = load('ID020103.png', size_const) # plant
+ID020201 = load('ID020201.png', size_const) # water
+ID020202 = load('ID020202.png', size_const) # water
+ID020203 = load('ID020203.png', size_const) # water
+ID020204 = load('ID020204.png', size_const) # water 
+ID020205 = load('ID020205.png', size_const) # water
+ID020206 = load('ID020206.png', size_const) # water
+ID020207 = load('ID020207.png', size_const) # water
+ID020208 = load('ID020208.png', size_const) # water
+ID020301 = load('ID020301.png', size_const) # tropicaltree
+ID030101 = load('ID030101.png', size_const) # enemyball
+ID030102 = load('ID030102.png', size_const) # enemyball
+ID030103 = load('ID030103.png', size_const) # enemyball
+ID110101 = load('ID110101.png', size_const) # hanger
+ID140101 = load('ID140101.png', size_const) # saw
+ID140102 = load('ID140102.png', size_const) # saw
+ID150101 = load('ID150101.png', size_const) # door
+ID150102 = load('ID150102.png', size_const) # door
+ID150103 = load('ID150103.png', size_const) # door
+ID150104 = load('ID150104.png', size_const) # door
+ID150105 = load('ID150105.png', size_const) # door
+ID150106 = load('ID150106.png', size_const) # door
+ID100101 = load('ID100101.png', size_const) # stand
+ID100102 = load('ID100102.png', size_const) # stand
+ID100103 = load('ID100103.png', size_const) # stand
+ID100201 = load('ID100101.png', size_const) # run
+ID100202 = load('ID100202.png', size_const) # run
+ID100203 = load('ID100203.png', size_const) # run
+ID100204 = load('ID100204.png', size_const) # run
+ID100205 = load('ID100205.png', size_const) # run
+ID100301 = load('ID100301.png', size_const) # hanger
+ID100302 = load('ID100302.png', size_const) # hanger
+ID100303 = load('ID100303.png', size_const) # hanger
+ID100304 = load('ID100304.png', size_const) # hanger
+ID100401 = load('ID100401.png', size_const) # dead
+ID050101 = load('ID050101.png', size_const) # health
+ID050102 = load('ID050102.png', size_const) # health
+ID120101 = load('ID120101.png', size_const)
+ID120201 = load('ID120201.png', size_const)
+ID060101 = load('ID060101.png', size_const) # stair
+ID060102 = load('ID060102.png', size_const) # stair
+ID070101 = load('ID070101.png', size_const) # number
+ID070102 = load('ID070102.png', size_const) # number
+ID070103 = load('ID070103.png', size_const) # number
+ID070104 = load('ID070104.png', size_const) # number
+ID070105 = load('ID070105.png', size_const) # number
+ID070106 = load('ID070106.png', size_const) # number
+ID070107 = load('ID070107.png', size_const) # number
+ID070108 = load('ID070108.png', size_const) # number
+ID070109 = load('ID070109.png', size_const) # number
+ID070110 = load('ID070110.png', size_const) # number
+ID010401 = load('ID010401.png', size_const) # block
+ID010402 = load('ID010402.png', size_const) # block
+ID020401 = load('ID020401.png', size_const) # texturePLANT
+ID210101 = load('ID210101.png', size_const) # playButtton
+ID210102 = load('ID210102.png', size_const) # playButtton
+ID220101 = load('ID220101.png', size_const) # flag
+ID220102 = load('ID220102.png', size_const) # flag
+ID220103 = load('ID220103.png', size_const) # flag
+ID220104 = load('ID220104.png', size_const) # flag
+ID220105 = load('ID220105.png', size_const) # flag
+ID220106 = load('ID220106.png', size_const) # flag
+ID220107 = load('ID220107.png', size_const) # flag
+ID220108 = load('ID220108.png', size_const) # flag
+ID220109 = load('ID220109.png', size_const) # flag
+ID220110 = load('ID220110.png', size_const) # flag
+ID230101 = load('ID230101.png', size_const) # shadow
+ID250101 = load('ID250101.png', size_const) # mline
+ID250102 = load('ID250102.png', size_const) # mline
+ID250103 = load('ID250103.png', size_const) # mline
+ID250104 = load('ID250104.png', size_const) # mline
+ID250201 = load('ID250201.png', size_const) # mline
+ID250202 = load('ID250202.png', size_const) # mline
+ID250203 = load('ID250203.png', size_const) # mline
+ID250204 = load('ID250204.png', size_const) # mline
+ID250301 = load('ID250301.png', size_const) # mline
+ID250302 = load('ID250302.png', size_const) # mline
+ID250303 = load('ID250303.png', size_const) # mline
+ID250304 = load('ID250304.png', size_const) # mline
+ID190101 = load('ID190101.png', size_const) # bomb
+ID180101 = load('ID180101.png', size_const) # piece
+ID010501 = load('ID010501.png', size_const) # ground
+ID170101 = load('ID170101.png', size_const) # info_button
+ID160101 = load('ID160101.png', size_const) # spikes
+
+# massives
+images = [] # include Image class
+colliders = [] # include Collider class
+animations = [] # include Animated_Image class
+enemyes = [] # include EnemyBall class
+shadows = [] # include Image class
+bombs = [] # including Bomb class
+spawners = []
+pieces = []
+
+# make objects
+camera = Camera(100, 100, [window[0] / 2, window[1] / 2], 100, 10)
+rect = ID100101.get_rect() # looking for player size
+player = Player(50, 200, rect.width - 0.1, rect.height - 0.1,
+                [[ID100101, ID100102, ID100103, 60], # stand
+                 [ID100201, ID100202, ID100203, ID100204, ID100205, 60], # run
+                 [ID100301, ID100302, ID100303, ID100304, 60], # hanger
+                 [ID100401, 100]], # dead
+                'original', True)
+
+# map 
+lvl = 0
+lvlmap = load_map(lvl)
+make_map(lvlmap, 0, 0, 16 * size_const, [[ID010201,ID010202,ID010203,ID010204,ID010205,ID010206,ID010207,ID010208,ID010209,ID010210,ID010211,ID010212],
+                                         [ID110101],
+                                         [ID060101,ID060102],
+                                         [ID030101, ID030102, ID030103],
+                                         [ID010401, ID010402],
+                                         [ID020201, ID020202, ID020203, ID020204, ID020205, ID020206, ID020207, ID020208],
+                                         [ID220101,ID220102,ID220103,ID220104,ID220105,ID220106,ID220107,ID220108,ID220109,ID220110],
+                                         [ID230101],
+                                         [ID150101],
+                                         [[ID250101,ID250102,ID250103,ID250104], [ID250201,ID250202,ID250203,ID250204], [ID250301,ID250302,ID250303,ID250304]],
+                                         [ID190101],
+                                         [ID010501],
+                                         [ID160101]])
+
+deltax = 0
+deltay = 0
+shacking = False
+show = 'game'
+shacking_time = 0
+teleported_time = 0
+
+while True:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+                pygame.quit()
+        if show == 'game':     
+            if player.dead is False:
+                if event.type == pygame.KEYDOWN:
+                    '''if event.key == pygame.K_SPACE:
+                        print(pygame.key.get_pressed().index(1))'''
+                    if player.controls == 'original':
+                        if event.key == pygame.K_w:
+                            if player.pos == 'stand':
+                                player.pos = 'fall'
+                                player.spdy = -1.3 * size_const / 4.5
+                        if event.key == pygame.K_d:
+                            player.spdx = 0.1 * fps_const
+                            player.stopping = False
+                            player.anim_num = 1
+                            player.flipped = False
+                        if event.key == pygame.K_a:
+                            player.spdx = -0.1 * fps_const
+                            player.stopping = False     
+                            player.anim_num = 1
+                            player.flipped = True
+                            
+                    elif player.controls == 'up_down':
+                        if event.key == pygame.K_w:
+                            player.spdy = -0.1 * fps_const
+                        if event.key == pygame.K_s:
+                            player.spdy = 0.1 * fps_const   
+                        if event.key == pygame.K_a:
+                            player.spdx = -0.1 * fps_const
+                            player.controls = 'original'
+                        if event.key == pygame.K_d:
+                            player.spdx = 0.1 * fps_const
+                            player.controls = 'original'
+                                
+                    elif player.controls == 'left_right':
+                        if event.key == pygame.K_d:
+                            player.spdx = 0.1 * fps_const
+                            player.flipped = False
+                            player.anim_num = 2
+                        elif event.key == pygame.K_a:
+                            player.spdx = -0.1 * fps_const
+                            player.flipped = True
+                            player.anim_num = 2          
+                        else:
+                            player.nimg = 0
+                        
+            if player.dead is False:              
+                if event.type == pygame.KEYUP:
+                    if player.controls == 'original':
+                        if event.key == pygame.K_d:
+                            player.stopping = True  
+                            player.anim_num = 0
+                        
+                        if event.key == pygame.K_a:
+                            player.stopping = True 
+                            player.anim_num = 0
+                    
+                    elif player.controls == 'up_down':
+                        if event.key == pygame.K_w:
+                            player.spdy = 0
+                        if event.key == pygame.K_s:
+                            player.spdy = 0      
+                            
+                    elif player.controls == 'left_right':
+                        if event.key == pygame.K_d:
+                            player.spdx = 0
+                        if event.key == pygame.K_a:
+                            player.spdx = 0    
+                            
+            if player.dead is True:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        player.dead = False
+                        player.x = player.past_pos[0]
+                        player.y = player.past_pos[1]
+                        player.anim_num = 0
+                        
+    if show == 'game':       
+        screen.fill((255, 255, 255))
+        
+        # camera move
+        camera.x += (player.x + pygame.mouse.get_pos()[0] / camera.movecf - camera.x) / camera.spdcf
+        camera.y += (player.y + pygame.mouse.get_pos()[1] / camera.movecf - camera.y) / camera.spdcf
+        deltax = camera.center[0] - camera.x # slip xcf of images
+        deltay = camera.center[1] - camera.y # slip ycf of images
+        
+        if shacking_time > 0:
+            camera.x += random.randint(-1, 1)
+            camera.y += random.randint(-1, 1)
+            shacking_time -= 1
+            
+        # spawn objects
+        for s in spawners:
+            s.tick()
+        
+        # rendering images
+        for i in images:
+            if i.x + 16 * size_const + deltax > 0 and i.x + deltax < window[0] and i.y + 16 * size_const + deltay > 0 and i.y + deltay < window[1]:
+                i.render(deltax, deltay)
+                
+        # rendering bombs
+        for b in bombs:
+            b.move()
+            b.render(deltax, deltay)
+            if b.destroyed is True:
+                bombs.pop(bombs.index(b))
+        
+        # rendering animations
+        for a in animations:
+            a.change_animation()
+            if a.x + 16 * size_const + deltax > 0 and a.x + deltax < window[0] and a.y + 16 * size_const + deltay > 0 and a.y + deltay < window[1]:
+                a.render(deltax, deltay)
+            
+        # rendering enemyes
+        for e in enemyes:
+            e.change_animation()
+            e.move()
+            if e.check_trigger(player.x, player.y, player.w, player.h) is True:
+                player.anim_num = 3
+                player.dead = True
+                player.stopping = True
+            e.render(deltax, deltay) 
+            
+        for p in pieces:
+            p.move()
+            p.render(deltax, deltay)
+            if p.destroyed is True:
+                pieces.pop(pieces.index(p))            
+        
+        # player move and render(also checking collidering)
+        old_py = player.y
+        player.move()
+        
+        blocks = []
+        touching = False
+        moving = False
+        for c in colliders:
+            if c.check_trigger(player.x, player.y, player.w, player.h) is True:
+                if c.ctype == 'block':
+                    blocks.append(c)
+                elif c.ctype == 'hanger':
+                    touching = True
+                    if player.controls != 'left_right':
+                        player.spdy = 0
+                        player.spdx = 0
+                    player.controls = 'left_right'
+                    player.y = c.y + size_const
+                    player.anim_num = 2
+                    player.physics = False
+                elif c.ctype == 'stair':
+                    touching = True
+                    if player.controls != 'up_down':
+                        player.spdy = 0
+                        player.spdx = 0
+                    player.controls = 'up_down'
+                    player.x = c.x
+                    player.anim_num = 2
+                    player.physics = False    
+                elif 'teleport' in c.ctype:
+                    if teleported_time == 0:
+                        teleported_time = 100
+                        player.x = int(c.ctype.split()[1]) * size_const * 16
+                        player.y = int(c.ctype.split()[2]) * size_const * 16
+                        player.pos = 'stand'
+                elif c.ctype == 'konv':
+                    touching = True
+                    blocks.append(c)
+                    if moving is False:
+                        player.x -= 0.5
+                        moving = True
+                elif c.ctype == 'flag':
+                    lvl += 1
+                    clear_map()
+                    make_map(load_map(lvl), 0, 0, 16 * size_const, [[ID010201,ID010202,ID010203,ID010204,ID010205,ID010206,ID010207,ID010208,ID010209],
+                                         [ID110101],
+                                         [ID060101,ID060102],
+                                         [ID030101, ID030102, ID030103],
+                                         [ID010401, ID010402],
+                                         [ID020201, ID020202, ID020203, ID020204, ID020205, ID020206, ID020207, ID020208],
+                                         [ID220101,ID220102,ID220103,ID220104,ID220105,ID220106,ID220107,ID220108,ID220109,ID220110],
+                                         [ID230101],
+                                         [ID150101]])  
+                elif c.ctype == 'deathtouch':
+                    player.anim_num = 3
+                    player.dead = True
+                    player.stopping = True                    
+                    
+        if touching is False:
+            if player.controls != 'original':
+                player.spdy = player.spdy / 2
+                player.spdx = 0
+            player.controls = 'original'
+            player.anim_num = 0
+            player.physics = True
+            
+        # checking structure of blocks
+        if len(blocks) == 0 and player.controls == 'original':
+            player.pos = 'fall'
+            player.physics = True
+            player.anim_num = 0
+        elif len(blocks) == 1:
+            collidering(blocks[0].x, blocks[0].y, blocks[0].w, blocks[0].h)
+        elif len(blocks) == 2:
+            if blocks[0].x == blocks[1].x:
+                if blocks[0].y < blocks[1].y:
+                    collidering(blocks[0].x, blocks[0].y, blocks[0].w, blocks[0].h * 2)
+                else:
+                    collidering(blocks[1].x, blocks[1].y, blocks[1].w, blocks[1].h * 2)
+            elif blocks[0].y == blocks[1].y:
+                if blocks[0].x < blocks[1].x:
+                    collidering(blocks[0].x, blocks[0].y, blocks[0].w * 2, blocks[0].h)
+                else:
+                    collidering(blocks[1].x, blocks[1].y, blocks[1].w * 2, blocks[1].h)      
+            else:
+                pass
+        elif len(blocks) == 3:
+            # deltax
+            if blocks[0].x == blocks[1].x:
+                if blocks[2].x > blocks[0].x:
+                    player.x = blocks[2].x + 0.01
+                else:
+                    player.x = blocks[0].x - player.w - 0.01
+            if blocks[1].x == blocks[2].x:
+                if blocks[0].x > blocks[1].x:
+                    player.x = blocks[0].x + 0.01
+                else:
+                    player.x = blocks[1].x - player.w - 0.01
+            if blocks[0].x == blocks[2].x:
+                if blocks[1].x > blocks[0].x:
+                    player.x = blocks[1].x + 0.01
+                else:
+                    player.x = blocks[0].x - player.w - 0.01
+            # deltay
+            if blocks[0].y == blocks[1].y:
+                if blocks[2].y > blocks[0].y:
+                    player.y = blocks[2].y
+                else:
+                    player.y = blocks[0].y - player.h
+            if blocks[1].y == blocks[2].y:
+                if blocks[0].y > blocks[1].y:
+                    player.y = blocks[0].y
+                else:
+                    player.y = blocks[1].y - player.h
+            if blocks[0].y == blocks[2].y:
+                if blocks[1].y > blocks[0].y:
+                    player.y = blocks[1].y
+                else:
+                    player.y = blocks[0].y - player.h              
+                    
+        # change animation
+        if player.spdx > 0 and player.pos == 'stand':
+            player.anim_num = 1
+            player.flipped = False
+        elif player.spdx < 0 and player.pos == 'stand':
+            player.anim_num = 1
+            player.flipped = True   
+        
+        player.change_animation()
+        player.render(deltax, deltay)
+        
+        # render shadows
+        for s in shadows:
+            s.render(deltax, deltay)
+        
+        # render info
+        x, y = 0, 0
+        for h in range(3):
+            if h < player.health:
+                screen.blit(ID050101, [x, y])
+            else:
+                screen.blit(ID050102, [x, y])
+            x += size_const * 10
+            
+        screen.blit(ID170101, [300, 10])        
+        #render_number(int(deltax), 10, 100)
+        #render_number(int(deltay), 10, 150)
+        
+        # special
+        if teleported_time > 0:
+            teleported_time -= 1
+        
+    elif show == 'mainmenu':
+        pass
+        
+    pygame.display.flip()
+            
+sys.exit()
